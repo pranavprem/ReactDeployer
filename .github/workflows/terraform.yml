@@ -1,0 +1,61 @@
+# Format, validate, and lint only. This workflow does not plan or apply,
+# and it does not read or write AWS.
+name: Terraform
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: fmt, validate, tflint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform init (application)
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate (application)
+        run: terraform validate -no-color
+
+      - name: terraform init (bootstrap)
+        working-directory: bootstrap
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate (bootstrap)
+        working-directory: bootstrap
+        run: terraform validate -no-color
+
+      - name: Set up TFLint
+        uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: v0.64.0
+
+      - name: tflint init
+        run: tflint --init
+
+      - name: tflint (application)
+        run: tflint --format compact
+
+      - name: tflint (bootstrap)
+        working-directory: bootstrap
+        run: tflint --config "${{ github.workspace }}/.tflint.hcl" --format compact
